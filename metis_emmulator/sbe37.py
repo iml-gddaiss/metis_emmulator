@@ -5,11 +5,18 @@ Date: August 2023
 
 Notes
 -----
+
 From Controller Firmware:
+
+    SerialOut ( ComPort, OutString, WaitString, NumberTries, TimeOut )
+    SerialIn(dest, Comport, Timeout, TerminationChar, MaxNumChars)
+
     Start:
+      # wait for the "S>" which mean it's ready for a new command
       SerialOut(SerialSBE37,CHR(13),"S>",1,50)
       SerialOut(SerialSBE37,"ts"&CHR(13)," ",1,400)
       SerialIn(RawSBE37_SalinityTest,SerialSBE37,300,CHR(83),40)
+
     Collect:
       SerialOut(SerialSBE37,CHR(13),"S>",1,50)
 
@@ -21,96 +28,143 @@ From Controller Firmware:
 
       SerialIn(RawSBE37,SerialSBE37,400,83,60)
 
+From Seabird
+    S> :After Seaterm232 displays the GetHD response, it provides an S> prompt
+        to indicate it is ready for the next command
+    ts: Take sample, store data in buffer, output data:
+        string: 23.7658, 0.00019, 0.062, 20 Oct 2012, 00:51:30
+                temp, conduct, pres (db), date, time
+    tss: Take new sample, store data in buffer and in
+        FLASH memory, and output data.
+        Note: MicroCAT ignores this command if
+        sampling data (Start has been sent).
+        string: 23.7658, 0.00019, 0.062, 20 Oct 2012, 00:51:30
+                temp, conduct, pres (db), date, time
+
+    sl ????? Sent by the controller
+
 """
+
+import logging
+
+import time
+import datetime
 
 import socket
 import threading
-import time
-import logging
 
-SBE37_BEAUDERATE = 9600
+import serial
 
-class SBE37Server:
-    def __init__(self, host, port):
-        self.host = host
-        self.port = port
+import random
+
+
+BEAUDERATE = 19200
+TIMEOUT = 10
+BINARY_FORMAT = 'ascii'
+BUFFER_SIZE = 2048
+
+SLEEP_DELAY = .1
+
+logger = logging.getLogger()
+logger.setLevel('DEBUG')
+
+
+class SBE37:
+    def __init__(self):
+        self.serial: serial.Serial = None
+
+        self.thread: threading.Thread = None
 
         self.is_running = False
+        self.do_sampling = False
 
-        self._socket = None
+        self.sample_buffer = ""
 
-        self.conns = {}
+    def start(self, port):
+        logging.info(f'Starting SBE 37 on port: {port}')
 
-        self.thread = None
+        self.serial = serial.Serial()
+        self.serial.baudrate = BEAUDERATE
+        self.serial.port = port
+        self.serial.timeout = TIMEOUT
 
-        logging.info(f'Test server host: {host}')
+        self.serial.open()
 
-    def start_comm_port(self, number_of_connections=5):
-        logging.info('Starting Test')
+        if self.serial.is_open:
+            self.is_running = True
+            self.thread = threading.Thread(target=self.run, daemon=False)
+            self.thread.start()
 
-        self.is_running = True
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    def run(self):
+        logging.info(f"Running SBE 37")
+
         while self.is_running:
-            try:
-                self._socket.bind((self.host, self.port))
-                break
-            except OSError:
-                logging.debug(f'Error, download port {self.port} unavailable. (Retrying in 2 seconds)')
-                time.sleep(2)
-                #self.port += 1
+            _received = self.serial.read(BUFFER_SIZE).decode(BINARY_FORMAT)
+            if _received:
+                logging.debug(f"Raw received: {_received}")
+                logging.info(f'Received: {_received}')
 
-        self._socket.listen(number_of_connections)
-        self.thread = threading.Thread(target=self.run_comm_port, daemon=True)
-        self.thread.start()
+                match _received:
+                    case "\r":
+                        self.send_ready_msg()
+                    case "ts\r":
+                        self.make_sample()
+                        self.send_data()
+                    case "tss\r":
+                        self.make_sample()
+                        self.send_data()
+                    case "sl\r":
+                        logging.debug('`sl` received FIXME') #TODO
+                    case _ :
+                        pass
 
-    def run_comm_port(self):
-        logging.info(f"Test server listening on port {self.port}")
-        while self.is_running:
-            try:
-                conn, addr = self._socket.accept()
-                logging.info(f"Test server accepted connection from {addr}")
-                threading.Thread(target=self.handle_connection, args=(conn, addr[1])).start()
-            except Exception as e:
-                logging.debug(f"Error accepting connection: {e}")
-                time.sleep(1)
+            time.sleep(SLEEP_DELAY)
 
-    def handle_connection(self, conn, name):
-        self.conns[name] = conn
-        try:
-            while True:
-                message = self.generate_message()
-                conn.sendall(message.encode())
-                logging.debug(f"sent: {message}")
-                time.sleep(.2)
-        except Exception as e:
-            logging.debug(f"Error handling connection: {e}")
-        finally:
-            conn.close()
-            self.conns.pop(name)
+    def make_sample(self):
+        current_time = datetime.datetime.now()
+        date = current_time.strftime("%d %b %Y")
+        _time = current_time.strftime("%H:%M:%S")
+        _temp = 24 * random_variation()
+        _cond = 0.0002 * random_variation()
+        _pres = 0.05 * random_variation()
+        self.sample_buffer = f"{_pres:.4f}, {_cond:.5f}, {_pres:.3f}, {date}, {_time}"
+        logging.info(f'Sampled data: {self.sample_buffer}')
 
-    def close_all(self):
+
+    def send_space_char(self):
+        self.serial.write(' '.encode(BINARY_FORMAT))
+        logging.info('Return Carriage sent')
+
+    def send_ready_msg(self):
+        self.serial.write('S>'.encode(BINARY_FORMAT))
+        logging.info('Ready Message sent')
+
+    def send_data(self):
+        self.serial.write(self.sample_buffer.encode(BINARY_FORMAT))
+        logging.info('Data sent')
+        time.sleep(SLEEP_DELAY)
+
+    def close(self):
+        logging.info('Closing Serial')
         self.is_running = False
-        for k, v in self.conns.items():
-            v.detach()
+        logging.info('Waiting for thread ...')
+        self.thread.join()
+        self.serial.close()
+        logging.info('Serial Closed')
 
-        if self._socket:
-            self._socket.close()
-            self._socket = None
-
-    @staticmethod
-    def generate_message():
-        return "%w,1.000kg#\n"
-
-    def send_to(self, name, msg):
-        self.conns[name].sendall(msg.encode())
+    # TODO
+    # def send_junk ?
 
 
-def start_server(host, port):
-    server = SBE37Server(host, port)
-    server.start_comm_port()
-    return server
+def random_variation():
+    return 1 + (random.random() - .5) / 10
+
+
+def start_SBE37(port=None):
+    sbe37 = SBE37()
+    sbe37.start(port)
+    return sbe37
+
 
 if __name__ == '__main__':
-    start_server()
-
+    sbe37 = start_SBE37(port='/dev/tty2')
