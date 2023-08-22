@@ -45,32 +45,34 @@ From Seabird
 
 """
 
-import logging
-
 import time
 import datetime
-
-import socket
 import threading
-
 import serial
-
 import random
 
+from typing import Optional
 
-BEAUDERATE = 19200
-TIMEOUT = 10
-BINARY_FORMAT = 'ascii'
-BUFFER_SIZE = 2048
+from logger import make_logger
 
-SLEEP_DELAY = .1
-
-logger = logging.getLogger()
-logger.setLevel('DEBUG')
+import logging
+LOGGER_LEVEL = logging.DEBUG
 
 
 class SBE37:
+    """
+    TODO def send_junk ?
+    """
+    beaudrate =19_200
+    timeout = 10
+    binary_format = 'ascii'
+    buffer_size = 2_048
+    run_sleep = .1
+    send_sleep = .1
+
     def __init__(self):
+        self.log = make_logger(self.__class__.__name__, level=LOGGER_LEVEL)
+
         self.serial: serial.Serial = None
 
         self.thread: threading.Thread = None
@@ -81,12 +83,12 @@ class SBE37:
         self.sample_buffer = ""
 
     def start(self, port):
-        logging.info(f'Starting SBE 37 on port: {port}')
+        self.log.info(f'Starting on port: {port}')
 
         self.serial = serial.Serial()
-        self.serial.baudrate = BEAUDERATE
+        self.serial.baudrate = self.beaudrate
         self.serial.port = port
-        self.serial.timeout = TIMEOUT
+        self.serial.timeout = self.timeout
 
         self.serial.open()
 
@@ -96,29 +98,25 @@ class SBE37:
             self.thread.start()
 
     def run(self):
-        logging.info(f"Running SBE 37")
+        self.log.info(f"Running ...")
 
         while self.is_running:
-            _received = self.serial.read(BUFFER_SIZE).decode(BINARY_FORMAT)
+            _received = self.serial.read(self.buffer_size).decode(self.binary_format)
             if _received:
-                logging.debug(f"Raw received: {_received}")
-                logging.info(f'Received: {_received}')
+                self.log.debug(f"Raw received: {_received}")
 
                 match _received:
                     case "\r":
                         self.send_ready_msg()
-                    case "ts\r":
+                    case "ts\r" | "tss\r":
                         self.make_sample()
-                        self.send_data()
-                    case "tss\r":
-                        self.make_sample()
-                        self.send_data()
+                        self.send_sample()
                     case "sl\r":
-                        logging.debug('`sl` received FIXME') #TODO
-                    case _ :
-                        pass
+                        self.log.debug('`sl` received FIXME') #TODO
+                    case _:
+                        self.log.warning(f'Unexpected received: {_received}')
 
-            time.sleep(SLEEP_DELAY)
+            time.sleep(self.run_sleep)
 
     def make_sample(self):
         current_time = datetime.datetime.now()
@@ -128,41 +126,47 @@ class SBE37:
         _cond = 0.0002 * random_variation()
         _pres = 0.05 * random_variation()
         self.sample_buffer = f"{_pres:.4f}, {_cond:.5f}, {_pres:.3f}, {date}, {_time}"
-        logging.info(f'Sampled data: {self.sample_buffer}')
-
+        self.log.info(f'Sampled data: {self.sample_buffer}')
 
     def send_space_char(self):
-        self.serial.write(' '.encode(BINARY_FORMAT))
-        logging.info('Return Carriage sent')
+        self.log.info('Sending Space Character')
+        self.send_message(' ')
 
     def send_ready_msg(self):
-        self.serial.write('S>'.encode(BINARY_FORMAT))
-        logging.info('Ready Message sent')
+        self.log.info('Sending Ready Message `S>`')
+        self.send_message('S>')
 
-    def send_data(self):
-        self.serial.write(self.sample_buffer.encode(BINARY_FORMAT))
-        logging.info('Data sent')
-        time.sleep(SLEEP_DELAY)
+    def send_sample(self):
+        self.log.info('Sending Sample')
+        self.send_message(self.sample_buffer)
+
+    def send_message(self, msg: str):
+        _result = self.serial.write(msg.encode(self.binary_format))
+        if _result:
+            self.log.warning(f'Sending Failed. Serial Write Result: {_result}')
+        else:
+            self.log.info(f'`{msg}` sent')
+        time.sleep(self.send_sleep)
 
     def close(self):
-        logging.info('Closing Serial')
+        self.log.info('Closing Serial')
         self.is_running = False
-        logging.info('Waiting for thread ...')
-        self.thread.join()
-        self.serial.close()
-        logging.info('Serial Closed')
 
-    # TODO
-    # def send_junk ?
+        self.log.info('Waiting for thread ...')
+        self.thread.join()
+
+        self.serial.close()
+        self.log.info('Serial Closed')
 
 
 def random_variation():
     return 1 + (random.random() - .5) / 10
 
 
-def start_SBE37(port=None):
+def start_SBE37(port: str):
     sbe37 = SBE37()
-    sbe37.start(port)
+    sbe37.start(port=port)
+
     return sbe37
 
 

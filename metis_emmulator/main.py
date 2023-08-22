@@ -4,6 +4,7 @@ import serial
 from utils import get_serial_ports, test_serial_port
 from sbe37 import start_SBE37
 
+
 @click.group('root')
 def root():
     pass
@@ -12,6 +13,7 @@ def root():
 @root.group('ports')
 def serial_ports():
     pass
+
 
 @serial_ports.command('test')
 @click.argument('port', type=click.STRING)
@@ -34,6 +36,7 @@ def list_serial_ports():
 @root.group('start')
 def start():
     pass
+
 
 @start.command('sbe37')
 @click.argument('port', type=click.STRING)
