@@ -114,19 +114,22 @@ class SBE37:
                 self.receive_msg += buff
             else:
                 self.log.info(rf'Message received: {self.receive_msg}')
-                match self.receive_msg.lower():
-                    case "":
-                        self.send_ready_msg()
-                    case "ts" | "tss":
-                        self.echo()
-                        self.send_sample()
-                        self.send_ready_msg()
-                    case "sl":
-                        self.echo()
-                        self.send_sample()
-                        self.send_ready_msg()
-                    case _:
-                        self.log.warning(f"Received Unexpected {self.receive_msg}")
+
+                match = self.receive_msg.lower()
+
+                if match == "":
+                    self.send_ready_msg()
+                elif match == "ts" | "tss":
+                    self.echo()
+                    self.send_sample()
+                    self.send_ready_msg()
+                elif match == "sl":
+                    self.echo()
+                    self.send_sample()
+                    self.send_ready_msg()
+                else:
+                    self.log.warning(f"Received Unexpected {self.receive_msg}")
+
                 self.receive_msg = ''
 
             time.sleep(self.run_sleep)
