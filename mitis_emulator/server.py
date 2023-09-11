@@ -1,4 +1,4 @@
-from sbe37 import SBE37
+from .sbe37 import SBE37
 
 
 class VirtualDevices:

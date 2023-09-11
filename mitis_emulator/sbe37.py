@@ -41,34 +41,27 @@ From Seabird
         string: 23.7658, 0.00019, 0.062, 20 Oct 2012, 00:51:30
                 temp, conduct, pres (db), date, time
 
-    sl ????? Sent by the controller
+    sl: Send Last Stored Value
 
 """
 
 import time
-import datetime
 import threading
 import serial
-import random
 
-from typing import Optional
-
-from logger import make_logger
+from .logger import make_logger
 
 import logging
-LOGGER_LEVEL = logging.DEBUG
+LOGGER_LEVEL = logging.INFO
 
 
 class SBE37:
-    """
-    TODO def send_junk ?
-    """
     beaudrate =19_200
-    timeout = 10
+    timeout = .1
     binary_format = 'ascii'
-    buffer_size = 2_048
-    run_sleep = .1
-    send_sleep = .1
+    buffer_size = 1
+    run_sleep = .001
+    send_sleep = .001
 
     def __init__(self):
         self.log = make_logger(self.__class__.__name__, level=LOGGER_LEVEL)
@@ -80,17 +73,30 @@ class SBE37:
         self.is_running = False
         self.do_sampling = False
 
+        self.receive_msg = b""
         self.sample_buffer = ""
+        self.make_sample()
 
-    def start(self, port):
-        self.log.info(f'Starting on port: {port}')
+    def make_sample(self):
+        _temp = '  23.7658'  # tttt.tttt
+        _cond = '  0.00019'  # cc.ccccc
+        _psal = '   9.1234' # ssss.ssss
+        # _psal = '  30.1234'  # ssss.ssss
+        _dens = ' 28.1234'  # rrr.rrrr
+        self.sample_buffer = ','.join([_temp, _cond, _psal, _dens])
+        self.log.info(f'Sampled data (len: {len(self.sample_buffer)}): {self.sample_buffer}')
+
+    def open(self, port):
+        self.log.info(f'Opening port: {port}')
 
         self.serial = serial.Serial()
         self.serial.baudrate = self.beaudrate
         self.serial.port = port
-        self.serial.timeout = self.timeout
 
         self.serial.open()
+
+    def start(self, port):
+        self.open(port)
 
         if self.serial.is_open:
             self.is_running = True
@@ -101,52 +107,47 @@ class SBE37:
         self.log.info(f"Running ...")
 
         while self.is_running:
-            _received = self.serial.read(self.buffer_size).decode(self.binary_format)
-            if _received:
-                self.log.debug(f"Raw received: {_received}")
+            buff = self.serial.read(self.buffer_size).decode(self.binary_format)
+            self.log.debug(f'Buffer: {buff}')
 
-                match _received:
-                    case "\r":
+            if buff != '\r':
+                self.receive_msg += buff
+            else:
+                self.log.info(rf'Message received: {self.receive_msg}')
+                match self.receive_msg.lower():
+                    case "":
                         self.send_ready_msg()
-                    case "ts\r" | "tss\r":
-                        self.make_sample()
+                    case "ts" | "tss":
+                        self.echo()
                         self.send_sample()
-                    case "sl\r":
-                        self.log.debug('`sl` received FIXME') #TODO
+                        self.send_ready_msg()
+                    case "sl":
+                        self.echo()
+                        self.send_sample()
+                        self.send_ready_msg()
                     case _:
-                        self.log.warning(f'Unexpected received: {_received}')
+                        self.log.warning(f"Received Unexpected {self.receive_msg}")
+                self.receive_msg = ''
 
             time.sleep(self.run_sleep)
 
-    def make_sample(self):
-        current_time = datetime.datetime.now()
-        date = current_time.strftime("%d %b %Y")
-        _time = current_time.strftime("%H:%M:%S")
-        _temp = 24 * random_variation()
-        _cond = 0.0002 * random_variation()
-        _pres = 0.05 * random_variation()
-        self.sample_buffer = f"{_pres:.4f}, {_cond:.5f}, {_pres:.3f}, {date}, {_time}"
-        self.log.info(f'Sampled data: {self.sample_buffer}')
+    def send(self, msg: str):
+        self.serial.write((msg + "\r\n").encode(self.binary_format))
+        self.log.info(f'`{msg}` sent')
+        time.sleep(self.send_sleep)
 
-    def send_space_char(self):
-        self.log.info('Sending Space Character')
-        self.send_message(' ')
-
-    def send_ready_msg(self):
-        self.log.info('Sending Ready Message `S>`')
-        self.send_message('S>')
+    def echo(self):
+        """Send back the received message"""
+        self.log.info('Echoing message')
+        self.send(self.receive_msg)
 
     def send_sample(self):
         self.log.info('Sending Sample')
-        self.send_message(self.sample_buffer)
+        self.send(self.sample_buffer)
 
-    def send_message(self, msg: str):
-        _result = self.serial.write(msg.encode(self.binary_format))
-        if _result:
-            self.log.warning(f'Sending Failed. Serial Write Result: {_result}')
-        else:
-            self.log.info(f'`{msg}` sent')
-        time.sleep(self.send_sleep)
+    def send_ready_msg(self):
+        self.log.info('Sending Ready Message')
+        self.serial.write("S>".encode(self.binary_format))
 
     def close(self):
         self.log.info('Closing Serial')
@@ -159,10 +160,6 @@ class SBE37:
         self.log.info('Serial Closed')
 
 
-def random_variation():
-    return 1 + (random.random() - .5) / 10
-
-
 def start_SBE37(port: str):
     sbe37 = SBE37()
     sbe37.start(port=port)
@@ -171,4 +168,7 @@ def start_SBE37(port: str):
 
 
 if __name__ == '__main__':
-    sbe37 = start_SBE37(port='/dev/tty2')
+    port = '/dev/ttyUSB0'
+    s = start_SBE37(port='/dev/ttyUSB0')
+    # s = SBE37()
+    # s.open(port=port)

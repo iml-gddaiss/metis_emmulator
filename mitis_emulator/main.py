@@ -1,8 +1,8 @@
 ﻿import click
 import serial
 
-from utils import get_serial_ports, test_serial_port
-from sbe37 import start_SBE37
+from .utils import get_serial_ports, test_serial_port
+from .sbe37 import start_SBE37
 
 
 @click.group('root')
@@ -18,7 +18,7 @@ def serial_ports():
 @serial_ports.command('test')
 @click.argument('port', type=click.STRING)
 @click.argument('msg', type=click.STRING)
-def _test_serial_port(port, msg = 'test'):
+def _test_serial_port(port, msg='test'):
     test_serial_port(port, msg)
 
 
