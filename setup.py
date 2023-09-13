@@ -9,7 +9,7 @@ def read_file(fname):
 
 
 setup(
-    name="magtogoek",
+    name="mitis",
     version=VERSION,
     author="JeromeJGuay,",
     author_email="jerome.guay@dfo-mpo.gc.ca",
@@ -20,6 +20,6 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     classifiers=["Programming Language :: Python :: 3"],
-    python_requires="~=3.11",
+    python_requires="~=3.9",
     entry_points={"console_scripts": ["mitis=mitis_emulator.main:root", ]},
 )

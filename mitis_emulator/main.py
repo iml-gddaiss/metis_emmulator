@@ -2,6 +2,7 @@
 import serial
 
 from .utils import get_serial_ports, test_serial_port
+from .server import start_devices
 from .sbe37 import start_SBE37
 
 
@@ -40,11 +41,22 @@ def start():
 
 @start.command('sbe37')
 @click.argument('port', type=click.STRING)
-def sbe37(port):
+@click.option('-d', '--debug', is_flag=True)
+def sbe37(port, debug):
     try:
-        start_SBE37(port)
+        start_SBE37(port=port, debug=debug)
     except serial.SerialException:
         click.secho(f'Port `{port}` does not exist.', fg='red')
+
+@start.command('devices')
+@click.option('-d', '--debug', is_flag=True)
+def devices(debug):
+    # try:
+    #     _ = start_devices(debug=debug)
+    # except serial.SerialException:
+    #     click.secho(f'One of the ports does not exist.', fg='red')
+
+    _ = start_devices(debug=debug)
 
 
 if __name__ == "__main__":

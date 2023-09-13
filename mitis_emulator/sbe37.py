@@ -52,7 +52,22 @@ import serial
 from .logger import make_logger
 
 import logging
-LOGGER_LEVEL = logging.INFO
+
+
+def make_sbe37_sample():
+    """
+    String total length: 38
+    Strings Format:
+        temperature:  tttt.tttt (4.4)
+        conductivity:  cc.ccccc (2.5)
+        salinity:     ssss.ssss (4.4)
+        density:       rrr.rrrr (3.4)
+    """
+    temperature = '  23.7658'
+    conductivity = '  0.00019'
+    salinity = '  30.1234'
+    density = ' 28.1234'
+    return ','.join([temperature, conductivity, salinity, density])
 
 
 class SBE37:
@@ -60,98 +75,111 @@ class SBE37:
     timeout = .1
     binary_format = 'ascii'
     buffer_size = 1
-    run_sleep = .001
-    send_sleep = .001
+    clock_speed = .1
+    transmit_sleep = 0.01
 
-    def __init__(self):
-        self.log = make_logger(self.__class__.__name__, level=LOGGER_LEVEL)
+    def __init__(self, debug=False):
+        log_level = logging.INFO
+        if debug is True:
+            log_level = logging.DEBUG
+
+        self.log = make_logger(self.__class__.__name__, level=log_level)
 
         self.serial: serial.Serial = None
-
         self.thread: threading.Thread = None
 
-        self.is_running = False
-        self.do_sampling = False
+        self._is_running = False
 
-        self.receive_msg = b""
-        self.sample_buffer = ""
-        self.make_sample()
-
-    def make_sample(self):
-        _temp = '  23.7658'  # tttt.tttt
-        _cond = '  0.00019'  # cc.ccccc
-        _psal = '   9.1234' # ssss.ssss
-        # _psal = '  30.1234'  # ssss.ssss
-        _dens = ' 28.1234'  # rrr.rrrr
-        self.sample_buffer = ','.join([_temp, _cond, _psal, _dens])
+        self.receive_msg = ""
+        self.sample_buffer = make_sbe37_sample()
         self.log.info(f'Sampled data (len: {len(self.sample_buffer)}): {self.sample_buffer}')
 
-    def open(self, port):
+    @property
+    def is_running(self):
+        return self._is_running
+
+    def open_serial(self, port):
         self.log.info(f'Opening port: {port}')
 
         self.serial = serial.Serial()
         self.serial.baudrate = self.beaudrate
+        self.serial.timeout = self.timeout
         self.serial.port = port
 
         self.serial.open()
 
     def start(self, port):
-        self.open(port)
+        self.open_serial(port)
 
         if self.serial.is_open:
-            self.is_running = True
+            self._is_running = True
             self.thread = threading.Thread(target=self.run, daemon=False)
             self.thread.start()
 
     def run(self):
         self.log.info(f"Running ...")
 
-        while self.is_running:
+        while self._is_running:
+            time.sleep(self.clock_speed)
+
             buff = self.serial.read(self.buffer_size).decode(self.binary_format)
-            self.log.debug(f'Buffer: {buff}')
 
-            if buff != '\r':
+            if buff == "":
+                continue
+
+            if buff != "\r":
+                self.log.debug(f'Buffer: {buff}')
                 self.receive_msg += buff
+                continue
+
+            self.log.info(f'Message received: {self.receive_msg}')
+
+            _match = self.receive_msg.lower()
+
+            if _match == "":
+                self.transmit_delay()
+                self.send_ready_msg()
+            elif _match in ["ts", "tss", "sl"]:
+                self.transmit_delay()
+                self.echo()
+                self.send_sample()
+                self.send_ready_msg()
             else:
-                self.log.info(rf'Message received: {self.receive_msg}')
-                match self.receive_msg.lower():
-                    case "":
-                        self.send_ready_msg()
-                    case "ts" | "tss":
-                        self.echo()
-                        self.send_sample()
-                        self.send_ready_msg()
-                    case "sl":
-                        self.echo()
-                        self.send_sample()
-                        self.send_ready_msg()
-                    case _:
-                        self.log.warning(f"Received Unexpected {self.receive_msg}")
-                self.receive_msg = ''
+                self.log.warning(f"Received Unexpected {self.receive_msg}")
 
-            time.sleep(self.run_sleep)
+            self.receive_msg = ''
 
-    def send(self, msg: str):
-        self.serial.write((msg + "\r\n").encode(self.binary_format))
-        self.log.info(f'`{msg}` sent')
-        time.sleep(self.send_sleep)
+    def transmit_delay(self):
+        """
+        Notes
+        -----
+            Unsure if it necessary
+        """
+        time.sleep(self.transmit_sleep)
+
+    def send(self, msg: str, end_char=True):
+        if end_char:
+            msg += "\r\n"
+        self.serial.write((msg).encode(self.binary_format))
+        self.log.info(rf'`{msg}` sent')
 
     def echo(self):
         """Send back the received message"""
         self.log.info('Echoing message')
-        self.send(self.receive_msg)
+        self.send(self.receive_msg, end_char=True)
 
     def send_sample(self):
         self.log.info('Sending Sample')
-        self.send(self.sample_buffer)
+        self.send(self.sample_buffer, end_char=True)
 
     def send_ready_msg(self):
         self.log.info('Sending Ready Message')
-        self.serial.write("S>".encode(self.binary_format))
+        self.send("S>", end_char=False)
+        # self.serial.write("S>".encode(self.binary_format))
 
     def close(self):
         self.log.info('Closing Serial')
-        self.is_running = False
+        self._is_running = False
 
         self.log.info('Waiting for thread ...')
         self.thread.join()
@@ -160,15 +188,14 @@ class SBE37:
         self.log.info('Serial Closed')
 
 
-def start_SBE37(port: str):
-    sbe37 = SBE37()
+def start_SBE37(port: str, debug=False):
+    sbe37 = SBE37(debug=debug)
     sbe37.start(port=port)
 
     return sbe37
 
 
 if __name__ == '__main__':
-    port = '/dev/ttyUSB0'
-    s = start_SBE37(port='/dev/ttyUSB0')
-    # s = SBE37()
-    # s.open(port=port)
+    port = '/dev/ttyUSB3'
+    s = start_SBE37(port=port)
+
