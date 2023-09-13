@@ -54,22 +54,6 @@ from .logger import make_logger
 import logging
 
 
-def make_sbe37_sample():
-    """
-    String total length: 38
-    Strings Format:
-        temperature:  tttt.tttt (4.4)
-        conductivity:  cc.ccccc (2.5)
-        salinity:     ssss.ssss (4.4)
-        density:       rrr.rrrr (3.4)
-    """
-    temperature = '  23.7658'
-    conductivity = '  0.00019'
-    salinity = '  30.1234'
-    density = ' 28.1234'
-    return ','.join([temperature, conductivity, salinity, density])
-
-
 class SBE37:
     beaudrate =19_200
     timeout = .1
@@ -91,7 +75,8 @@ class SBE37:
         self._is_running = False
 
         self.receive_msg = ""
-        self.sample_buffer = make_sbe37_sample()
+        self.sample_buffer = ""
+        self.make_sample(low_salinity=False)
         self.log.info(f'Sampled data (len: {len(self.sample_buffer)}): {self.sample_buffer}')
 
     @property
@@ -186,6 +171,22 @@ class SBE37:
 
         self.serial.close()
         self.log.info('Serial Closed')
+
+    def make_sample(self, low_salinity=False):
+        """
+        String total length: 38
+        Strings Format:
+            temperature:  tttt.tttt (4.4)
+            conductivity:  cc.ccccc (2.5)
+            salinity:     ssss.ssss (4.4)
+            density:       rrr.rrrr (3.4)
+        """
+        temperature = '  23.7658'
+        conductivity = '  0.00019'
+        salinity = '   0.0000' if low_salinity else '  30.1234'
+        density = ' 28.1234'
+
+        self.sample_buffer = ','.join([temperature, conductivity, salinity, density])
 
 
 def start_SBE37(port: str, debug=False):
