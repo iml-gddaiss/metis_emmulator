@@ -4,6 +4,7 @@ import serial
 from .utils import get_serial_ports, test_serial_port
 from .server import start_devices
 from .sbe37 import start_SBE37
+from .adcp_workhorse import start_workhorse
 
 
 @click.group('root')
@@ -45,6 +46,15 @@ def start():
 def sbe37(port, debug):
     try:
         start_SBE37(port=port, debug=debug)
+    except serial.SerialException:
+        click.secho(f'Port `{port}` does not exist.', fg='red')
+
+@start.command('workhorse')
+@click.argument('port', type=click.STRING)
+@click.option('-d', '--debug', is_flag=True)
+def sbe37(port, debug):
+    try:
+        start_workhorse(port=port, debug=debug)
     except serial.SerialException:
         click.secho(f'Port `{port}` does not exist.', fg='red')
 

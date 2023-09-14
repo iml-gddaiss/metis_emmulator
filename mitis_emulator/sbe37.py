@@ -75,9 +75,9 @@ class SBE37:
         self._is_running = False
 
         self.receive_msg = ""
-        self.sample_buffer = ""
-        self.make_sample(low_salinity=False)
-        self.log.info(f'Sampled data (len: {len(self.sample_buffer)}): {self.sample_buffer}')
+        self.data_string = ""
+        self.make_data_string(low_salinity=False)
+        self.log.info(f'Sampled data (len: {len(self.data_string)}): {self.data_string}')
 
     @property
     def is_running(self):
@@ -127,7 +127,7 @@ class SBE37:
             elif _match in ["ts", "tss", "sl"]:
                 self.transmit_delay()
                 self.echo()
-                self.send_sample()
+                self.send_data()
                 self.send_ready_msg()
             else:
                 self.log.warning(f"Received Unexpected {self.receive_msg}")
@@ -145,7 +145,7 @@ class SBE37:
     def send(self, msg: str, end_char=True):
         if end_char:
             msg += "\r\n"
-        self.serial.write((msg).encode(self.binary_format))
+        self.serial.write(msg.encode(self.binary_format))
         self.log.info(rf'`{msg}` sent')
 
     def echo(self):
@@ -153,9 +153,9 @@ class SBE37:
         self.log.info('Echoing message')
         self.send(self.receive_msg, end_char=True)
 
-    def send_sample(self):
+    def send_data(self):
         self.log.info('Sending Sample')
-        self.send(self.sample_buffer, end_char=True)
+        self.send(self.data_string, end_char=True)
 
     def send_ready_msg(self):
         self.log.info('Sending Ready Message')
@@ -172,7 +172,7 @@ class SBE37:
         self.serial.close()
         self.log.info('Serial Closed')
 
-    def make_sample(self, low_salinity=False):
+    def make_data_string(self, low_salinity=False):
         """
         String total length: 38
         Strings Format:
@@ -186,7 +186,7 @@ class SBE37:
         salinity = '   0.0000' if low_salinity else '  30.1234'
         density = ' 28.1234'
 
-        self.sample_buffer = ','.join([temperature, conductivity, salinity, density])
+        self.data_string = ','.join([temperature, conductivity, salinity, density])
 
 
 def start_SBE37(port: str, debug=False):
