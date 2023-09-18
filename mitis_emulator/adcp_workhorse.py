@@ -8,6 +8,16 @@ import logging
 
 
 """
+WorkHorse:
+- Send BREAK signal to enter command mode.
+- ADCP will send '>' char in terminal prompt mode (ready to received command).
+
+If the entered command is valid, the WorkHorse ADCP executes the command.
+If the command is one that does not provide output data, the WorkHorse ADCP 
+sends a carriage return line feed <CR> <LF> and displays a new “>” prompt.
+
+- Send to CE command to received last ensemble sampled.
+
 PD8 output format
 Newline CHARs terminate each line and two terminate a ensemble.
 
@@ -36,9 +46,10 @@ class WorkHorse:
     beaudrate = 1115200
     binary_format = 'ascii'
     buffer_size = 3000
-    clock_speed = 30
 
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, sampling_rate=60):
+        self.sampling_rate = sampling_rate
+
         log_level = logging.INFO
         if debug is True:
             log_level = logging.DEBUG
@@ -52,7 +63,6 @@ class WorkHorse:
 
         self.data_string = ""
         self.make_data_string(nbin=25)
-        self.log.info(f'Sampled data (len: {len(self.data_string)}): {self.data_string}')
 
     @property
     def is_running(self):
@@ -65,7 +75,12 @@ class WorkHorse:
         self.serial.baudrate = self.beaudrate
         self.serial.port = port
 
-        self.serial.open()
+        self.write_timeout=0
+
+        try:
+            self.serial.open()
+        except serial.serialutil.SerialException as err:
+            self.log.error(f'Ports {err}  does not exist')
 
     def start(self, port):
         self.open_serial(port)
@@ -79,16 +94,14 @@ class WorkHorse:
         self.log.info(f"Running ...")
 
         while self._is_running:
-            while self.serial.in_waiting != 0:
-                time.sleep(self.clock_speed)
-
             self.send_data()
+            time.sleep(self.sampling_rate)
 
     def send(self, msg: str, end_char=True):
         if end_char:
             msg += "\n\n"
         self.serial.write(msg.encode(self.binary_format))
-        self.log.info(rf'`{msg}` sent')
+        # self.log.info(rf'`{msg}` sent')
 
     def send_data(self):
         self.log.info('Sending Sample')
@@ -117,8 +130,8 @@ class WorkHorse:
         self.data_string = "\n".join(_sample)
 
 
-def start_workhorse(port: str, debug=False):
-    workhorse = WorkHorse(debug=debug)
+def start_workhorse(port: str, sampling_rate=int, debug=False):
+    workhorse = WorkHorse(debug=debug, sampling_rate=int)
     workhorse.start(port=port)
 
     return workhorse

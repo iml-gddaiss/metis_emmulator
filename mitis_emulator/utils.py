@@ -2,6 +2,8 @@ import sys
 import glob
 import serial
 
+import json
+
 
 def get_serial_ports():
     """ Lists serial port names
@@ -41,3 +43,24 @@ def test_serial_port(port, msg):
         ser.close()
     except ValueError:
         print('Port does not exist or is already in use.')
+
+
+def dict2json(filename: str, dictionary: dict, indent: int = 4) -> None:
+    """Makes json file from dictionary
+
+    Parameters
+    ----------
+    dictionary
+    filename
+    indent :
+        argument is passed to json.dump(..., indent=indent)
+    """
+    with open(filename, "w") as f:
+        json.dump(dictionary, f, indent=indent)
+
+
+def json2dict(json_file: str):
+    """Open json file as a dictionary."""
+    with open(json_file) as f:
+        dictionary = json.load(f)
+    return dictionary

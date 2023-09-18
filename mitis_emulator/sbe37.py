@@ -91,7 +91,10 @@ class SBE37:
         self.serial.timeout = self.timeout
         self.serial.port = port
 
-        self.serial.open()
+        try:
+            self.serial.open()
+        except serial.serialutil.SerialException as err:
+            self.log.error(f'Ports {err}  does not exist')
 
     def start(self, port):
         self.open_serial(port)

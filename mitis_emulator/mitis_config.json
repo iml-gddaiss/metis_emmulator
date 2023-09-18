@@ -1,0 +1,7 @@
+{
+  "ports": {
+    "sbe37": "",
+    "workhorse": ""
+  },
+  "workhorse_sampling_rate_s": 60
+}
