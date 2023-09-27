@@ -12,7 +12,7 @@ class Ports:
     workhorse: str
 
 
-init_local_file()
+init_local_file(silent=True)
 
 CONFIGURATION = json2dict(LOCAL_CONFIGURATION_FILE)
 

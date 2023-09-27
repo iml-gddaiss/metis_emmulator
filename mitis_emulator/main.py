@@ -56,16 +56,18 @@ def sbe37(port, debug):
     except serial.SerialException:
         click.secho(f'Port `{port}` does not exist.', fg='red')
 
+
 @start.command('workhorse')
 @click.argument('port', type=click.STRING)
 @click.argument('sampling_rate', type=click.INT)
 @click.option('-d', '--debug', is_flag=True)
-def workhorse(port, debug, sampling_rate):
+def workhorse(port, sampling_rate, debug):
     from .adcp_workhorse import start_workhorse
     try:
         start_workhorse(port=port, sampling_rate=sampling_rate, debug=debug)
     except serial.SerialException:
         click.secho(f'Port `{port}` does not exist.', fg='red')
+
 
 @start.command('devices')
 @click.option('-d', '--debug', is_flag=True)

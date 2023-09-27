@@ -21,21 +21,14 @@ sends a carriage return line feed <CR> <LF> and displays a new “>” prompt.
 PD8 output format
 Newline CHARs terminate each line and two terminate a ensemble.
 
-```
-1997/02/28 11:16:50.07 00001
-Hdg: 209.1 Pitch: 9.6 Roll: -9.1
-Temp: 22.8 SoS: 1529 BIT: 00
-Bin Dir Mag E/W N/S Vert Err Echo1 Echo2 Echo3 Echo4
- 1 -- -- -32768 -32768 -32768 -32768 43 49 46 43
- 2 -- -- -32768 -32768 -32768 -32768 44 41 45 44
- 3 -- -- -32768 -32768 -32768 -32768 43 41 45 43
- 4 -- -- -32768 -32768 -32768 -32768 43 41 46 43
- 5 -- -- -32768 -32768 -32768 -32768 43 41 45 43
- 6 -- -- -32768 -32768 -32768 -32768 42 41 46 43
- 7 -- -- -32768 -32768 -32768 -32768 43 42 46 43
- 8 -- -- -32768 -32768 -32768 -32768 43 40 46 43
- 9 -- -- -32768 -32768 -32768 -32768 43 41 45 44
- 10 -- -- -32768 -32768 -32768 -32768 44 41 46 44
+``` 
+2023/09/27 12:33:00.00 00016
+Hdg: 330.8 Pitch: 0.1 Roll: 0.5
+Temp: 23.9 SoS: 1528 BIT: 00
+Bin    Dir    Mag     E/W     N/S    Vert     Err   Echo1  Echo2  Echo3  Echo4
+  1    --      --     -41     124     -34  -32768     48     55     56     39
+...
+ 25    --      --  -32768  -32768  -32768  -32768     40     46     43     41
 
 ```
 
@@ -43,9 +36,10 @@ Bin Dir Mag E/W N/S Vert Err Echo1 Echo2 Echo3 Echo4
 
 
 class WorkHorse:
-    beaudrate = 1115200
+    beaudrate = 115200
     binary_format = 'ascii'
     buffer_size = 3000
+    number_of_bins = 25
 
     def __init__(self, debug=False, sampling_rate=60):
         self.sampling_rate = sampling_rate
@@ -62,7 +56,7 @@ class WorkHorse:
         self._is_running = False
 
         self.data_string = ""
-        self.make_data_string(nbin=25)
+        self.make_data_string(nbin=self.number_of_bins)
 
     @property
     def is_running(self):
@@ -72,6 +66,9 @@ class WorkHorse:
         self.log.info(f'Opening port: {port}')
 
         self.serial = serial.Serial()
+        self.serial.bytesize = serial.EIGHTBITS
+        self.serial.parity = serial.PARITY_NONE
+        self.serial.stopbits = serial.STOPBITS_ONE
         self.serial.baudrate = self.beaudrate
         self.serial.port = port
 
@@ -92,6 +89,7 @@ class WorkHorse:
 
     def run(self):
         self.log.info(f"Running ...")
+        self.log.info(f'Sample Interval: {self.sampling_rate}s')
 
         while self._is_running:
             self.send_data()
@@ -100,11 +98,12 @@ class WorkHorse:
     def send(self, msg: str, end_char=True):
         if end_char:
             msg += "\n\n"
+        self.log.info("```" + msg + "```")
         self.serial.write(msg.encode(self.binary_format))
         # self.log.info(rf'`{msg}` sent')
 
     def send_data(self):
-        self.log.info('Sending Sample')
+        self.log.info(f'Sampled sent. (Interval: {self.sampling_rate}s)')
         self.send(self.data_string, end_char=True)
 
     def close(self):
@@ -119,19 +118,20 @@ class WorkHorse:
 
     def make_data_string(self, nbin=25):
         _sample = [
-        "2023/01/01 12:00:00.00 00001",
-        "Hdg: 209.1 Pitch: 9.6 Roll: -9.1",
-        "Temp: 22.8 SoS: 1529 BIT: 00",
-        "Bin Dir Mag E/W N/S Vert Err Echo1 Echo2 Echo3 Echo4",
+            "2023/09/27 12:33:00.00 00016",
+            "Hdg: 330.8 Pitch: 0.1 Roll: 0.5",
+            "Temp: 23.9 SoS: 1528 BIT: 00",
+            "Bin    Dir    Mag     E/W     N/S    Vert     Err   Echo1  Echo2  Echo3  Echo4",
         ]
         for i in range(nbin):
-            _sample.append(f" {i+1} -- -- -32768 -32768 -32768 -32768 43 49 46 43")
+            # _sample.append(f" {i+1} -- -- -32768 -32768 -32768 -32768 43 49     46      43")
+            _sample.append(f" {i+1:>2}    --      --  -32768  -32768  -32768  -32768     40     46     43     41")
 
         self.data_string = "\n".join(_sample)
 
 
 def start_workhorse(port: str, sampling_rate=int, debug=False):
-    workhorse = WorkHorse(debug=debug, sampling_rate=int)
+    workhorse = WorkHorse(debug=debug, sampling_rate=sampling_rate)
     workhorse.start(port=port)
 
     return workhorse

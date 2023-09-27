@@ -41,8 +41,8 @@ def test_serial_port(port, msg):
         ser.open()
         ser.write(msg.encode('ascii'))
         ser.close()
-    except ValueError:
-        print('Port does not exist or is already in use.')
+    except (ValueError, serial.SerialException):
+        print('Port does not exist or is unavailable')
 
 
 def dict2json(filename: str, dictionary: dict, indent: int = 4) -> None:
