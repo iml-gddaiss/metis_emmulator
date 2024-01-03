@@ -1,34 +1,42 @@
+import sys
+
 import serial
 import time
-from datetime import datetime
-
+from datetime import datetime, timedelta
 
 ENCODING = "ascii"
-BAUDERATE = 115200
-
 
 class Wizard:
-    def __init__(self, port: str):
+    def __init__(self, port: str, bauderate):
         self.serial = serial.Serial()
         self.serial.bytesize = serial.EIGHTBITS
         self.serial.parity = serial.PARITY_NONE
         self.serial.stopbits = serial.STOPBITS_ONE
-        self.serial.baudrate = BAUDERATE
+        self.serial.baudrate = bauderate
         self.serial.port = port
         self.serial.open()
-        self.serial.timeout=.1
+        self.serial.timeout = .1
 
     def enter_command_mode(self):
         self.serial.send_break()
         time.sleep(1)
-        print(self.serial.read_all().decode(ENCODING))
+        try:
+            answer = self.serial.read_all().decode(ENCODING)
+            print(answer)
+        except UnicodeError:
+            print("NO RETURN: Wrong Bauderate")
+            sys.exit()
 
     def send(self, command: str, value: str = ""):
         self.serial.write((command + value + '\r').encode(ENCODING))
         time.sleep(1)
-        print(self.serial.read_all().decode(ENCODING))
+        try:
+            answer = self.serial.read_all().decode(ENCODING)
+            print(answer)
+        except UnicodeError:
+            print("NO RETURN: Bauderate change")
 
-    def set_serial_control(self, value: str):
+    def set_serial_control(self, bauderate: int = 9600, parity: str = None, stop_bit: int = 1):
         """
         Baud Rate          Parity                      Stop Bits
         0 = 300
@@ -41,6 +49,11 @@ class Wizard:
         7 = 57600
         8 = 115200
         """
+        bauderates = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
+        parities = [None, "even", "odd", "low", "high"]
+
+        value = str(bauderates.index(bauderate)) + str(parities.index(parity) + 1) + str(stop_bit)
+
         self.send("CB", value)
 
     def set_flow_control(self, ens=1, ping=1, output=0, serial=0, record=1):
@@ -107,29 +120,50 @@ class Wizard:
     def deploy(self):
         self.send("CS")
 
+    def power_down(self):
+        self.send("CZ")
+
     def close(self):
         self.serial.close()
 
 
-if __name__ == "__main__":
-    PORT = "/dev/ttyUSB3"
+def pd8_test_setup(port, bauderate, new_bauderate = None):
+    start_time = (datetime.now() + timedelta(seconds=60)).strftime("%Y/%m/%d, %H:%M:%S")
 
-    w = Wizard(PORT)
-
+    w = Wizard(port=port, bauderate=bauderate)
     w.enter_command_mode()
-    w.set_serial_control('811')
+
+    if new_bauderate is None:
+        new_bauderate = bauderate
+
+    w.set_serial_control(bauderate=new_bauderate, parity=None, stop_bit=1)
+
+    if new_bauderate != bauderate:
+        w.close()
+        w = Wizard(port=port, bauderate=new_bauderate)
+
     w.set_flow_control(ens=1, ping=1, output=1, serial=1, record=1)
     #w.output_pd8()
     w.set_real_time()
-    w.set_number_of_cells(25)
+    w.set_number_of_cells(27)
     w.set_ping_per_ensemble(1)
     w.set_time_between_pings("00:00.50")
-    w.set_time_between_ensemble("00:00:20.00")
-    w.set_start_time('2023/09/27, 13:01:00')
+    w.set_time_between_ensemble("00:10:00.00")
+    w.set_start_time(start_time)
     w.keep_parameters()
     w.deploy()
     w.close()
 
 
+def power_down(port, bauderate):
+    w = Wizard(port, bauderate)
+    w.enter_command_mode()
+    w.power_down()
+    w.close()
 
 
+if __name__ == "__main__":
+    PORT = "/dev/ttyUSB3"
+    current_bauderate = [115200, 19200][0]
+    pd8_test_setup(port=PORT, bauderate=current_bauderate, new_bauderate=115200)
+    #power_down(port=PORT, bauderate=current_bauderate)

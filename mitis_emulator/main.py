@@ -12,7 +12,7 @@ def root():
     pass
 
 
-@root.group('init')
+@root.command('init')
 @click.option('-f', '--force', is_flag=True)
 def init(force):
     init_local_file(force=force)
@@ -49,10 +49,13 @@ def start():
 @start.command('sbe37')
 @click.argument('port', type=click.STRING)
 @click.option('-d', '--debug', is_flag=True)
-def sbe37(port, debug):
+@click.option('-l', '--low_salinity', is_flag=True)
+def sbe37(port, debug, low_salinity):
     from .sbe37 import start_SBE37
     try:
-        start_SBE37(port=port, debug=debug)
+        s = start_SBE37(port=port, debug=debug)
+        if low_salinity:
+            s.make_data_string(low_salinity=True)
     except serial.SerialException:
         click.secho(f'Port `{port}` does not exist.', fg='red')
 

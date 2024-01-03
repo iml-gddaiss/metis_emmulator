@@ -76,8 +76,7 @@ class SBE37:
 
         self.receive_msg = ""
         self.data_string = ""
-        self.make_data_string(low_salinity=False)
-        self.log.info(f'Sampled data (len: {len(self.data_string)}): {self.data_string}')
+        self.make_data_string()
 
     @property
     def is_running(self):
@@ -109,8 +108,11 @@ class SBE37:
 
         while self._is_running:
             time.sleep(self.clock_speed)
-
-            buff = self.serial.read(self.buffer_size).decode(self.binary_format)
+            try:
+                buff = self.serial.read(self.buffer_size).decode(self.binary_format)
+            except Exception as err:
+                self.log.debug(f'Error While reading error: {err}')
+                continue
 
             if buff == "":
                 continue
@@ -163,7 +165,6 @@ class SBE37:
     def send_ready_msg(self):
         self.log.info('Sending Ready Message')
         self.send("S>", end_char=False)
-        # self.serial.write("S>".encode(self.binary_format))
 
     def close(self):
         self.log.info('Closing Serial')
@@ -191,8 +192,10 @@ class SBE37:
 
         self.data_string = ','.join([temperature, conductivity, salinity, density])
 
+        self.log.info(f'Sampled data (len: {len(self.data_string)}): {self.data_string}')
 
-def start_SBE37(port: str, debug=False):
+
+def start_SBE37(port: str, debug=False, low_salinity=False):
     sbe37 = SBE37(debug=debug)
     sbe37.start(port=port)
 
@@ -202,4 +205,5 @@ def start_SBE37(port: str, debug=False):
 if __name__ == '__main__':
     port = '/dev/ttyUSB3'
     s = start_SBE37(port=port)
+    s.make_data_string(low_salinity=True)
 
