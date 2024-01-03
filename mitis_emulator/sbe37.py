@@ -55,7 +55,7 @@ import logging
 
 
 class SBE37:
-    beaudrate =19_200
+    beaudrate = 19_200
     timeout = .1
     binary_format = 'ascii'
     buffer_size = 1
